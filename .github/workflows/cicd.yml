@@ -1,0 +1,76 @@
+name: Test and deploy Flask app to Touge
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: touge-deploy
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.8'
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
+
+  deploy:
+    needs: test
+    if: vars.TOUGE_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TOUGE_SERVER_IP: ${{ secrets.TOUGE_SERVER_IP }}
+      TOUGE_SSH_PRIVATE_KEY: ${{ secrets.TOUGE_SSH_PRIVATE_KEY }}
+      TOUGE_SSH_KNOWN_HOSTS: ${{ secrets.TOUGE_SSH_KNOWN_HOSTS }}
+      TOUGE_SSH_PORT: '40137'
+      TOUGE_SSH_USER: root
+    steps:
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$TOUGE_SERVER_IP"
+          test -n "$TOUGE_SSH_PRIVATE_KEY"
+          test -n "$TOUGE_SSH_KNOWN_HOSTS"
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$TOUGE_SSH_PRIVATE_KEY" > "$HOME/.ssh/id_rsa"
+          printf '%s\n' "$TOUGE_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/id_rsa" "$HOME/.ssh/known_hosts"
+
+      - name: Pull, install, restart, and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i "$HOME/.ssh/id_rsa" \
+            -p "$TOUGE_SSH_PORT" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            "$TOUGE_SSH_USER@$TOUGE_SERVER_IP" 'bash -se' <<'REMOTE'
+          set -euo pipefail
+          cd /root/flask-web-app
+          git pull --ff-only origin main
+          .venv/bin/python -m pip install -r requirements.txt
+          supervisorctl restart flask-web-app
+          supervisorctl status flask-web-app
+          test "$(curl -fsS http://127.0.0.1:5000/)" = 'Hello,NEU!'
+          REMOTE
