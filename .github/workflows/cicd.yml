@@ -61,11 +61,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ssh -i "$HOME/.ssh/id_rsa" \
-            -p "$TOUGE_SSH_PORT" \
-            -o BatchMode=yes \
-            -o StrictHostKeyChecking=yes \
-            "$TOUGE_SSH_USER@$TOUGE_SERVER_IP" 'bash -se' <<'REMOTE'
+          for attempt in 1 2 3 4; do
+            if ssh -i "$HOME/.ssh/id_rsa" \
+              -p "$TOUGE_SSH_PORT" \
+              -o BatchMode=yes \
+              -o ConnectTimeout=15 \
+              -o KexAlgorithms=curve25519-sha256 \
+              -o StrictHostKeyChecking=yes \
+              "$TOUGE_SSH_USER@$TOUGE_SERVER_IP" 'bash -se' <<'REMOTE'
           set -euo pipefail
           cd /root/flask-web-app
           git pull --ff-only origin main
@@ -74,3 +77,9 @@ jobs:
           supervisorctl status flask-web-app
           test "$(curl -fsS http://127.0.0.1:5000/)" = 'Hello,NEU!'
           REMOTE
+            then
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 1
