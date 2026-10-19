@@ -42,7 +42,7 @@ jobs:
       TOUGE_SERVER_IP: ${{ secrets.TOUGE_SERVER_IP }}
       TOUGE_SSH_PRIVATE_KEY: ${{ secrets.TOUGE_SSH_PRIVATE_KEY }}
       TOUGE_SSH_KNOWN_HOSTS: ${{ secrets.TOUGE_SSH_KNOWN_HOSTS }}
-      TOUGE_SSH_PORT: '40137'
+      TOUGE_SSH_PORT: '49260'
       TOUGE_SSH_USER: root
     steps:
       - name: Configure SSH
